@@ -6,6 +6,12 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -13,7 +19,9 @@ import java.util.concurrent.Executors;
 public class FlightBooking {
     private static FlightBookingSystem system = new FlightBookingSystem();
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, SQLException {
+        system.initialize();
+
         HttpServer server = HttpServer.create(new InetSocketAddress(8081), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
         server.createContext("/", FlightBooking::handleRequest);
@@ -23,22 +31,27 @@ public class FlightBooking {
     }
 
     private static void handleRequest(HttpExchange exchange) throws IOException {
-        String path = exchange.getRequestURI().getPath();
+        try {
+            String path = exchange.getRequestURI().getPath();
 
-        if (path.equals("/") && exchange.getRequestMethod().equals("GET")) {
-            send(exchange, 200, "text/html; charset=UTF-8", Files.readString(Path.of("index.html")));
-        } else if (path.equals("/api/flights") && exchange.getRequestMethod().equals("GET")) {
-            sendFlights(exchange);
-        } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
-            sendSeats(exchange);
-        } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
-            bookSeat(exchange);
-        } else {
-            sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
+            if (path.equals("/") && exchange.getRequestMethod().equals("GET")) {
+                send(exchange, 200, "text/html; charset=UTF-8", Files.readString(Path.of("index.html")));
+            } else if (path.equals("/api/flights") && exchange.getRequestMethod().equals("GET")) {
+                sendFlights(exchange);
+            } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
+                sendSeats(exchange);
+            } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
+                bookSeat(exchange);
+            } else {
+                sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            sendJson(exchange, 500, "{\"message\":\"Database error. Check the MySQL settings.\"}");
         }
     }
 
-    private static void sendFlights(HttpExchange exchange) throws IOException {
+    private static void sendFlights(HttpExchange exchange) throws IOException, SQLException {
         Flight[] flights = system.getFlights();
         String json = "[";
 
@@ -61,7 +74,7 @@ public class FlightBooking {
         sendJson(exchange, 200, json);
     }
 
-    private static void sendSeats(HttpExchange exchange) throws IOException {
+    private static void sendSeats(HttpExchange exchange) throws IOException, SQLException {
         Map<String, String> query = readForm(exchange.getRequestURI().getRawQuery());
         Flight flight = system.getFlight(readNumber(query.get("flightId")));
 
@@ -73,7 +86,7 @@ public class FlightBooking {
         sendJson(exchange, 200, flight.getSeatsJson());
     }
 
-    private static void bookSeat(HttpExchange exchange) throws IOException {
+    private static void bookSeat(HttpExchange exchange) throws IOException, SQLException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         Map<String, String> form = readForm(body);
 
@@ -149,6 +162,35 @@ class FlightBookingSystem {
         new Flight(3, "UK 812", "Delhi", "Chennai", "19:25")
     };
 
+    void initialize() throws SQLException {
+        try (Connection connection = Database.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS flight_schedule ("
+                    + "id INT PRIMARY KEY, flight_code VARCHAR(20) NOT NULL, origin VARCHAR(80) NOT NULL, "
+                    + "destination VARCHAR(80) NOT NULL, departure_time VARCHAR(20) NOT NULL, total_seats INT NOT NULL)");
+
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT IGNORE INTO flight_schedule (id, flight_code, origin, destination, departure_time, total_seats) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)")) {
+                for (Flight flight : flights) {
+                    insert.setInt(1, flight.getId());
+                    insert.setString(2, flight.getCode());
+                    insert.setString(3, flight.getFrom());
+                    insert.setString(4, flight.getTo());
+                    insert.setString(5, flight.getTime());
+                    insert.setInt(6, flight.getTotalSeats());
+                    insert.executeUpdate();
+                }
+            }
+
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS flight_bookings ("
+                    + "flight_id INT NOT NULL, seat_number INT NOT NULL, passenger_name VARCHAR(100) NOT NULL, "
+                    + "passenger_type VARCHAR(20) NOT NULL, booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                    + "PRIMARY KEY (flight_id, seat_number), "
+                    + "FOREIGN KEY (flight_id) REFERENCES flight_schedule(id))");
+        }
+    }
+
     Flight[] getFlights() {
         return flights;
     }
@@ -169,7 +211,7 @@ class Flight {
     private String from;
     private String to;
     private String time;
-    private Passenger[] seats;
+    private int totalSeats;
 
     Flight(int id, String code, String from, String to, String time) {
         this(id, code, from, to, time, 5);
@@ -181,7 +223,7 @@ class Flight {
         this.from = from;
         this.to = to;
         this.time = time;
-        seats = new Passenger[numberOfSeats];
+        totalSeats = numberOfSeats;
     }
 
     int getId() { return id; }
@@ -189,39 +231,91 @@ class Flight {
     String getFrom() { return from; }
     String getTo() { return to; }
     String getTime() { return time; }
-    int getTotalSeats() { return seats.length; }
+    int getTotalSeats() { return totalSeats; }
 
-    synchronized boolean bookSeat(int seatNumber, Passenger passenger) {
-        if (seatNumber < 1 || seatNumber > seats.length || seats[seatNumber - 1] != null) {
+    synchronized boolean bookSeat(int seatNumber, Passenger passenger) throws SQLException {
+        if (seatNumber < 1 || seatNumber > totalSeats) {
             return false;
         }
 
-        seats[seatNumber - 1] = passenger;
-        System.out.println(passenger.getName() + " booked " + code + " seat " + seatNumber);
-        return true;
+        try (Connection connection = Database.getConnection();
+             PreparedStatement insert = connection.prepareStatement(
+                     "INSERT INTO flight_bookings (flight_id, seat_number, passenger_name, passenger_type) "
+                             + "VALUES (?, ?, ?, ?)")) {
+            insert.setInt(1, id);
+            insert.setInt(2, seatNumber);
+            insert.setString(3, passenger.getName());
+            insert.setString(4, passenger.getType());
+            insert.executeUpdate();
+            System.out.println(passenger.getName() + " booked " + code + " seat " + seatNumber);
+            return true;
+        } catch (SQLException e) {
+            if (e.getErrorCode() == 1062) {
+                return false;
+            }
+            throw e;
+        }
     }
 
-    synchronized int getAvailableSeats() {
-        int available = 0;
-        for (Passenger passenger : seats) {
-            if (passenger == null) {
-                available++;
+    synchronized int getAvailableSeats() throws SQLException {
+        try (Connection connection = Database.getConnection();
+             PreparedStatement query = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM flight_bookings WHERE flight_id = ?")) {
+            query.setInt(1, id);
+            try (ResultSet result = query.executeQuery()) {
+                result.next();
+                return totalSeats - result.getInt(1);
             }
         }
-        return available;
     }
 
-    synchronized String getSeatsJson() {
+    synchronized String getSeatsJson() throws SQLException {
+        boolean[] booked = new boolean[totalSeats];
+
+        try (Connection connection = Database.getConnection();
+             PreparedStatement query = connection.prepareStatement(
+                     "SELECT seat_number FROM flight_bookings WHERE flight_id = ?")) {
+            query.setInt(1, id);
+            try (ResultSet result = query.executeQuery()) {
+                while (result.next()) {
+                    int seatNumber = result.getInt("seat_number");
+                    if (seatNumber >= 1 && seatNumber <= totalSeats) {
+                        booked[seatNumber - 1] = true;
+                    }
+                }
+            }
+        }
+
         String json = "{\"seats\":[";
 
-        for (int i = 0; i < seats.length; i++) {
-            json += "{\"number\":" + (i + 1) + ",\"booked\":" + (seats[i] != null) + "}";
-            if (i < seats.length - 1) {
+        for (int i = 0; i < totalSeats; i++) {
+            json += "{\"number\":" + (i + 1) + ",\"booked\":" + booked[i] + "}";
+            if (i < totalSeats - 1) {
                 json += ",";
             }
         }
 
         return json + "]}";
+    }
+}
+
+class Database {
+    static Connection getConnection() throws SQLException {
+        String url = System.getenv("DB_URL");
+        String user = System.getenv("DB_USER");
+        String password = System.getenv("DB_PASSWORD");
+
+        if (url == null || url.isBlank()) {
+            url = "jdbc:mysql://localhost:3306/booking_app?createDatabaseIfNotExist=true&serverTimezone=UTC";
+        }
+        if (user == null || user.isBlank()) {
+            user = "root";
+        }
+        if (password == null) {
+            throw new SQLException("Set the DB_PASSWORD environment variable before starting the app.");
+        }
+
+        return DriverManager.getConnection(url, user, password);
     }
 }
 

@@ -1,14 +1,18 @@
-# Simple Flight Booking
+# Northbound — flight booking
 
-The Java program serves the flight booking page and handles the booking API. Its worker threads can process requests at the same time, while `Flight.bookSeat` is synchronized to prevent a seat from being booked twice.
+A small Java flight-seat booking app with a dark HTML/CSS/JavaScript frontend and MySQL storage. Bookings persist after the server restarts. Flight and theatre bookings use separate tables in the shared `booking_app` database.
 
-Run from this folder with Java 11 or newer:
+## Run it
+
+Use Java 11+, Maven, and MySQL. From this folder, set the database credentials in your terminal and start the app:
 
 ```bash
-export JAVA_HOME="$HOME/.local/opt/jdk-21/usr/lib/jvm/java-21-openjdk-amd64"
-export PATH="$JAVA_HOME/bin:$PATH"
-javac --add-modules jdk.httpserver FlightBooking.java
-java --add-modules jdk.httpserver FlightBooking
+export DB_USER=root
+read -s -p "MySQL password: " DB_PASSWORD
+export DB_PASSWORD
+mvn compile exec:java
 ```
 
-Open <http://localhost:8081>.
+The app creates the `booking_app` database and its flight tables on first run. Open <http://localhost:8081>.
+
+`Flight.bookSeat` is synchronized, and the database also has a unique key for each flight/seat pair to prevent duplicate bookings.
