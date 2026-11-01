@@ -6,7 +6,7 @@
     <title>Northbound — Flight booking</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --paper: #090b0d;
@@ -20,7 +20,7 @@
         }
 
         * { box-sizing: border-box; }
-        body { margin: 0; background: radial-gradient(ellipse at 80% 0%, rgba(214, 242, 103, .055), transparent 34%), var(--paper); color: var(--ink); font-family: "DM Sans", sans-serif; }
+        body { margin: 0; background: radial-gradient(ellipse at 80% 0%, rgba(214, 242, 103, .055), transparent 34%), var(--paper); color: var(--ink); font-family: "Manrope", sans-serif; }
         button, input, select { font: inherit; }
         [hidden] { display: none !important; }
         ::selection { color: #090b0d; background: var(--lime); }
@@ -35,13 +35,13 @@
         }
 
         .brand { display: flex; align-items: center; gap: 11px; font-size: 12px; font-weight: 700; letter-spacing: .13em; }
-        .top-note, .eyebrow, .section-label, .mono, .footer-note { font-family: "DM Mono", monospace; text-transform: uppercase; letter-spacing: .09em; }
+        .top-note, .eyebrow, .section-label, .mono, .footer-note { font-family: "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .09em; }
         .top-note { color: var(--muted); font-size: 10px; }
         main { width: min(1080px, 86%); margin: 0 auto; }
 
         .intro { padding: 54px 0 32px; display: flex; align-items: end; justify-content: space-between; gap: 22px; }
         .eyebrow { margin: 0 0 12px; color: var(--teal); font-size: 10px; }
-        h1 { margin: 0; font: 500 clamp(40px, 5vw, 60px)/.98 "Fraunces", Georgia, serif; letter-spacing: -.045em; }
+        h1 { margin: 0; font: 400 clamp(40px, 5vw, 60px)/.98 "Instrument Serif", Georgia, serif; letter-spacing: -.035em; }
         .intro-copy { max-width: 270px; margin: 0 0 4px; color: var(--muted); font-size: 13px; line-height: 1.65; }
 
         .booking-card { display: grid; grid-template-columns: 350px 1fr; min-height: 490px; background: rgba(17, 21, 24, .96); border: 1px solid var(--line); box-shadow: 0 22px 70px rgba(0, 0, 0, .3); animation: appear .4s ease-out both; }
@@ -52,16 +52,16 @@
         .flight-card { width: 100%; padding: 13px 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; text-align: left; color: var(--ink); background: transparent; border: 1px solid transparent; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
         .flight-card:hover { background: #191f20; transform: translateX(2px); }
         .flight-card.active { background: #1a2014; border-color: #657641; }
-        .flight-code { display: block; margin-bottom: 6px; font: 11px "DM Mono", monospace; color: var(--teal); }
+        .flight-code { display: block; margin-bottom: 6px; font: 11px "IBM Plex Mono", monospace; color: var(--teal); }
         .route { display: block; font-size: 13px; font-weight: 600; }
-        .flight-time { grid-row: span 2; align-self: center; font: 11px "DM Mono", monospace; }
+        .flight-time { grid-row: span 2; align-self: center; font: 11px "IBM Plex Mono", monospace; }
         .flight-seats { color: var(--muted); font-size: 10px; }
         .panel-note { margin-top: 25px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
 
         .seat-panel { padding: 28px clamp(20px, 5vw, 55px) 25px; }
-        .plane-label { width: min(290px, 90%); margin: 5px auto 22px; padding: 8px; color: #a5b1ae; text-align: center; font: 9px "DM Mono", monospace; letter-spacing: .16em; border-top: 2px solid #596565; border-radius: 50% 50% 0 0; }
+        .plane-label { width: min(290px, 90%); margin: 5px auto 22px; padding: 8px; color: #a5b1ae; text-align: center; font: 9px "IBM Plex Mono", monospace; letter-spacing: .16em; border-top: 2px solid #596565; border-radius: 50% 50% 0 0; }
         .seat-grid { display: grid; grid-template-columns: repeat(3, 58px); justify-content: center; gap: 12px; }
-        .seat { height: 47px; color: #e5e9df; background: #1a2023; border: 1px solid #384347; border-radius: 11px 11px 5px 5px; font: 11px "DM Mono", monospace; cursor: pointer; transition: transform .15s, background .15s; }
+        .seat { height: 47px; color: #e5e9df; background: #1a2023; border: 1px solid #384347; border-radius: 11px 11px 5px 5px; font: 11px "IBM Plex Mono", monospace; cursor: pointer; transition: transform .15s, background .15s; }
         .seat:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--teal); }
         .seat.selected { color: #10130c; background: var(--teal); border-color: var(--teal); }
         .seat.taken { color: #a3adab; background: #343c3f; border-color: #343c3f; cursor: not-allowed; }
@@ -72,7 +72,7 @@
         .dot.taken { background: #343c3f; border-color: #343c3f; }
 
         .booking-form { padding-top: 18px; display: grid; grid-template-columns: 1fr 125px auto; align-items: end; gap: 10px; border-top: 1px solid var(--line); }
-        .field label { display: block; margin-bottom: 6px; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+        .field label { display: block; margin-bottom: 6px; color: var(--muted); font: 9px "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
         .field input, .field select { width: 100%; height: 40px; padding: 0 10px; color: var(--ink); background: #0c1012; border: 1px solid var(--line); outline: none; }
         .field input:focus, .field select:focus { border-color: var(--teal); }
         .field select option { color: var(--ink); background: #111518; }
@@ -85,8 +85,8 @@
         footer { padding: 21px 0 30px; display: flex; justify-content: space-between; color: var(--muted); }
 
         .header-actions { display: flex; align-items: center; gap: 22px; }
-        .account-menu { display: flex; align-items: center; gap: 12px; color: var(--muted); font: 10px "DM Mono", monospace; }
-        .sign-out { padding: 7px 10px; color: var(--ink); background: transparent; border: 1px solid var(--line); cursor: pointer; font: 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .06em; }
+        .account-menu { display: flex; align-items: center; gap: 12px; color: var(--muted); font: 10px "IBM Plex Mono", monospace; }
+        .sign-out { padding: 7px 10px; color: var(--ink); background: transparent; border: 1px solid var(--line); cursor: pointer; font: 9px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .06em; }
         .sign-out:hover { color: var(--lime); border-color: var(--lime); }
 
         .auth-layout {
@@ -99,15 +99,15 @@
         }
         .auth-story { padding: 20px 0; }
         .auth-story .eyebrow { margin-bottom: 20px; }
-        .auth-title { margin: 0; font: 500 clamp(58px, 8vw, 96px)/.94 "Fraunces", Georgia, serif; letter-spacing: -.065em; }
-        .auth-title em { color: var(--lime); font-weight: 500; }
+        .auth-title { margin: 0; font: 400 clamp(58px, 8vw, 96px)/.94 "Instrument Serif", Georgia, serif; letter-spacing: -.045em; }
+        .auth-title em { color: var(--lime); font-weight: 400; }
         .auth-copy { max-width: 410px; margin: 24px 0 0; color: var(--muted); font-size: 14px; line-height: 1.75; }
         .shared-proof { max-width: 415px; margin-top: 38px; padding: 18px 0; display: grid; grid-template-columns: 46px 1fr; gap: 15px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-        .proof-mark { width: 42px; height: 42px; display: grid; place-items: center; color: var(--lime); border: 1px solid #657641; border-radius: 7px; font: 20px "DM Mono", monospace; }
-        .proof-heading { margin: 1px 0 5px; font: 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+        .proof-mark { width: 42px; height: 42px; display: grid; place-items: center; color: var(--lime); border: 1px solid #657641; border-radius: 7px; font: 20px "IBM Plex Mono", monospace; }
+        .proof-heading { margin: 1px 0 5px; font: 10px "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
         .proof-copy { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
         .auth-steps { max-width: 470px; margin-top: 34px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-        .auth-step { color: var(--muted); font: 9px/1.6 "DM Mono", monospace; text-transform: uppercase; letter-spacing: .04em; }
+        .auth-step { color: var(--muted); font: 9px/1.6 "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .04em; }
         .auth-step span { display: block; margin-bottom: 5px; color: var(--lime); }
 
         .auth-card { padding: 30px; background: rgba(17, 21, 24, .96); border: 1px solid var(--line); box-shadow: 0 22px 70px rgba(0, 0, 0, .3); animation: appear .4s ease-out both; }
@@ -115,10 +115,10 @@
         .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: #0c1012; border: 1px solid var(--line); }
         .auth-tab { min-height: 36px; color: var(--muted); background: transparent; border: 0; font-size: 11px; cursor: pointer; }
         .auth-tab.active { color: var(--ink); background: #1a2014; box-shadow: inset 0 0 0 1px #657641; }
-        .auth-card h2 { margin: 24px 0 6px; font: 500 29px/1.1 "Fraunces", Georgia, serif; letter-spacing: -.035em; }
+        .auth-card h2 { margin: 24px 0 6px; font: 400 29px/1.1 "Instrument Serif", Georgia, serif; letter-spacing: -.025em; }
         .auth-description { margin: 0 0 22px; color: var(--muted); font-size: 12px; line-height: 1.55; }
         .auth-field { margin-top: 15px; }
-        .auth-field label { display: block; margin-bottom: 7px; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+        .auth-field label { display: block; margin-bottom: 7px; color: var(--muted); font: 9px "IBM Plex Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
         .auth-field input { width: 100%; height: 43px; padding: 0 12px; color: var(--ink); background: #0c1012; border: 1px solid var(--line); outline: none; }
         .auth-field input:focus { border-color: var(--lime); }
         .auth-field input::placeholder { color: #697576; }
@@ -127,7 +127,7 @@
         .auth-submit:disabled { opacity: .55; cursor: wait; }
         .auth-message { min-height: 18px; margin: 12px 0 0; color: var(--lime); font-size: 11px; }
         .auth-message.error { color: var(--red); }
-        .auth-footnote { margin: 18px 0 0; padding-top: 14px; color: var(--muted); border-top: 1px solid var(--line); font: 9px/1.6 "DM Mono", monospace; }
+        .auth-footnote { margin: 18px 0 0; padding-top: 14px; color: var(--muted); border-top: 1px solid var(--line); font: 9px/1.6 "IBM Plex Mono", monospace; }
         @keyframes appear { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 
         @media (max-width: 760px) {
