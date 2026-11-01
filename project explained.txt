@@ -33,6 +33,9 @@ Build versions: Maven Wrapper 3.3.2 downloads Maven 3.9.9. pom.xml uses Maven Co
 
 There is no package declaration at the top of the Java source files. For this small project, its Java classes are in the default package. The import statements bring in the following JDK packages:
 
+java.lang
+Automatically imported by Java. It supplies common types used throughout the source, including String, Integer, and the base Exception classes.
+
 com.sun.net.httpserver
 HttpServer listens for browser requests. HttpExchange represents one request and its response. This is part of the JDK module jdk.httpserver, which Maven enables in pom.xml.
 
@@ -58,7 +61,7 @@ java.util.regex
 Pattern checks username rules.
 
 java.security and javax.crypto
-SecureRandom generates password salts and session tokens. MessageDigest calculates SHA-256 hashes and compares password hashes safely. SecretKeyFactory and PBEKeySpec implement PBKDF2 password hashing.
+SecureRandom generates password salts and session tokens. MessageDigest calculates SHA-256 hashes and compares password hashes safely. SecretKeyFactory implements PBKDF2; PBEKeySpec from javax.crypto.spec supplies its password, salt, iteration count, and output size.
 
 java.time, java.time.temporal, and java.time.format
 Instant and ChronoUnit set and check the seven-day session expiry. DateTimeFormatter formats the cookie expiry date, and ZoneOffset supplies UTC. Timestamp, from java.sql, writes the expiry to MySQL.
@@ -87,6 +90,12 @@ The Maven Wrapper downloads and runs the configured Maven version, so a separate
 run.sh
 Sets up Java/Maven environment defaults, asks for the MySQL password without displaying it when needed, and launches the application.
 
+Build and launch details:
+- pom.xml sets the Java release to 11 and source encoding to UTF-8. Its sourceDirectory is the repository folder because FlightBooking.java and AccountAuth.java are kept at the top level rather than src/main/java.
+- The MySQL Connector/J dependency adds the JDBC driver to Maven's classpath. The Maven Compiler Plugin compiles the Java files and passes --add-modules jdk.httpserver. The Exec Maven Plugin runs FlightBooking as the main class.
+- .mvn/wrapper/maven-wrapper.properties pins the Maven download. mvnw is the Unix launcher and mvnw.cmd is the Windows launcher. .mvn/jvm.config enables jdk.httpserver when the wrapper starts the JVM.
+- run.sh uses strict Bash options so a failed command stops the script. It uses the project's available Java install when present, adds Java to PATH, configures the JDK trust store for Maven HTTPS downloads, defaults DB_USER to root, and securely prompts with read -s if DB_PASSWORD is unset. It then replaces the shell with ./mvnw compile exec:java.
+
 project explained.txt
 This guide.
 
@@ -95,50 +104,68 @@ This guide.
 
 FlightBooking.java - web server and request controller
 
-FlightBooking is the Java entry point. main() first calls FlightBookingSystem.initialize() and AccountAuth.initialize() so the MySQL tables exist before requests arrive. It then starts HttpServer on port 8081 and assigns incoming requests to a fixed pool of eight worker threads.
+FlightBooking has two static fields. system is the in-memory flight catalogue and domain-object lookup. auth is configured with the fixed table names flight_accounts and flight_sessions and the cookie name flight_session. Static fields let the HTTP request handler use the same service objects throughout the server lifetime.
 
-handleRequest() checks the URL path and HTTP method. GET / reads index.html and returns it to the browser. Register, login, session, and logout paths go to the account code. Flight, seat, and booking API paths require a valid session. If there is no session, the server returns HTTP 401. SQL failures are caught and returned as an HTTP 500 response.
+main() is the startup sequence. First it opens MySQL and creates or updates the schedule and booking tables through FlightBookingSystem.initialize(). Then it creates the account and session tables through AccountAuth.initialize(). If database initialization throws SQLException, the server does not start. After initialization, HttpServer.create() binds to port 8081. Executors.newFixedThreadPool(8) allows up to eight request tasks to run at once. createContext("/", ...) registers one handler for the root page and API paths; handleRequest() distinguishes those paths. start() begins accepting requests.
 
-authenticate() reads the browser's URL-encoded username and password. It calls AccountAuth.register() or AccountAuth.login(), then places the returned session token in an HTTP-only cookie. sendSession() checks that cookie and tells the page whether a user is signed in.
+handleRequest() is the router. It reads the URL path with getRequestURI().getPath() and checks the HTTP method. GET / reads index.html from the current project folder. POST /api/register and POST /api/login are public authentication actions. GET /api/session reports the current login. POST /api/logout removes it. For the other /api/ paths, the router calls auth.currentUser() first. Without a valid user it returns 401 and does not call the flight or booking logic. With a user it dispatches GET /api/flights, GET /api/seats, or POST /api/book. An unknown path returns 404. The outer SQLException handler returns 500 for database failures. Each response closes its HttpExchange in send().
 
-sendFlights() loops over the flights in FlightBookingSystem and returns their IDs, codes, routes, departure times, available-seat counts, and capacities as JSON. sendSeats() reads flightId from the query string, finds that flight, and returns the current seat map from MySQL.
+authenticate() handles both account actions. The boolean register parameter selects register() or login(). The request body is decoded as UTF-8 and parsed by readForm(). On success, the method sets the session cookie and returns the username. Account creation returns 201 Created; a normal login returns 200 OK. AccountAuth.AuthException contains a status and a safe message for invalid input or an incorrect login, and authenticate() returns that status to the browser.
 
-bookSeat() reads flightId, seat number, passenger name, and ticket type from the request. The request is accepted only after handleRequest() has verified the session. The authenticated account ID is passed into Flight.bookSeat() and stored with the booking. A type of VIP creates a VIPPassenger; other values create a regular Passenger. Invalid input returns HTTP 400. A seat that another request already claimed returns HTTP 409.
+sendSession() calls auth.currentUser() using the request's Cookie header. It returns JSON with authenticated=false when there is no valid session, or authenticated=true and the normalized username when there is one. It lets index.html decide whether to leave the visitor on the landing screen or show booking.
 
-readNumber() safely parses numeric form values. readForm() splits and URL-decodes form data into a Map. sendJson() and send() set response content type, disable caching, write the response, and close the exchange.
+sendFlights() uses the catalogue in FlightBookingSystem, loops through the three Flight objects, and appends a JSON object for each one. Each object includes the ID, code, origin, destination, departure time, capacity, and available-seat count. The last value is calculated from MySQL at request time, so it reflects bookings saved by any account. sendSeats() reads flightId from the query string, parses it, finds the Flight, and calls getSeatsJson(). An unknown flight returns 404.
+
+bookSeat() parses flightId, seat number, passenger name, and ticket type from a URL-encoded POST body. A missing flight or blank passenger name returns 400. The authenticated AccountAuth.User is supplied by the router, not accepted from the form, so a browser cannot choose another account ID. The name and ticket type create either a Passenger or VIPPassenger. The account ID and passenger object are passed to Flight.bookSeat(). That method returns false for an out-of-range seat or duplicate seat; the handler currently reports either case as HTTP 409 with the same "already taken" message. A successful insert returns 200.
+
+readNumber() returns an integer or -1 if parsing fails. readForm() creates a HashMap, splits a form body at ampersands, splits each pair only at its first equals sign, URL-decodes both sides as UTF-8, and stores the result by field name. sendJson() chooses the application/json content type. send() converts the response string to UTF-8 bytes, sets Content-Type and Cache-Control: no-store, writes the status and body, then closes the exchange. No JSON serializer is involved; responses are small strings built by the application.
 
 FlightBookingSystem
 
-FlightBookingSystem owns three flight definitions: AI 101 from Delhi to Mumbai, 6E 205 from Mumbai to Bengaluru, and UK 812 from Delhi to Chennai. The first and third flights have five seats; the second has six. initialize() creates flight_schedule and flight_bookings when missing and inserts the schedule rows if they are not already present. It also adds account_id to an older flight_bookings table if that column is missing. getFlights() returns the in-memory flight list; getFlight(id) finds one flight by ID.
+FlightBookingSystem owns a Flight array containing AI 101 from Delhi to Mumbai, 6E 205 from Mumbai to Bengaluru, and UK 812 from Delhi to Chennai. The first and third have five seats; the second has six. The array is the catalogue the HTTP API loops through. MySQL stores a copy of the schedule so flight_bookings can use a foreign key to flight_schedule.
+
+initialize() uses JDBC statements for schema setup. CREATE TABLE IF NOT EXISTS creates flight_schedule and flight_bookings only when missing. INSERT IGNORE with a PreparedStatement seeds each default flight without overwriting existing rows. The final ALTER TABLE tries to add account_id to a booking table created by an older version. MySQL error 1060 means that column already exists and is intentionally ignored; other SQL errors are rethrown so startup fails instead of silently hiding a schema problem.
+
+getFlights() returns the configured array. getFlight(id) scans it and returns the matching Flight object or null. Flight's getId(), getCode(), getFrom(), getTo(), getTime(), and getTotalSeats() methods return its fields to the API and initialization code. The flight schedule used by this UI is defined in Java; booking and seat availability are read from MySQL.
 
 Flight
 
-Flight stores one flight's ID, code, origin, destination, departure time, and capacity. bookSeat() checks that the requested seat is within the 1-based range, then inserts a row into MySQL. A database primary key on flight_id plus seat_number rejects duplicate reservations, including races between different server threads. The synchronized keyword also prevents two threads in this Java process from executing the same Flight method at once.
+Flight is the flight domain object. Its private fields id, code, from, to, time, and totalSeats describe one flight. One constructor uses the standard capacity of five seats. The second constructor accepts a custom capacity, which is used for 6E 205's six seats. Getter methods expose values needed by FlightBookingSystem and the JSON response without exposing direct field mutation.
 
-getAvailableSeats() counts all booking rows for that flight and subtracts that count from the capacity. getSeatsJson() reads all saved seat numbers and turns them into a JSON array with a booked true/false value. These queries do not filter by account_id. That is why every signed-in account sees the same availability.
+bookSeat(seatNumber, passenger, accountId) first checks that the visible seat number is between 1 and totalSeats. It then opens a JDBC connection and prepares an INSERT into flight_bookings with flight ID, seat number, passenger name, passenger type, and authenticated account ID. Each question mark is bound with setInt() or setString(). try-with-resources closes the statement and connection on success or failure. If MySQL reports error 1062, the composite primary key already exists and the method returns false. Other SQL failures are rethrown. synchronized serializes calls on this Flight object in one JVM; MySQL's primary key also protects the seat if different worker threads or separate server instances race.
+
+getAvailableSeats() prepares SELECT COUNT(*) for this flight, reads the count from ResultSet, then subtracts it from totalSeats. The query deliberately counts every account's row. getSeatsJson() allocates one boolean per seat, runs SELECT seat_number for the flight, and marks each valid result true at array position seatNumber - 1. It loops through that array and builds JSON such as {"number":1,"booked":false}. It also deliberately does not filter on account_id, so the live seat map is shared by everyone.
 
 Passenger and VIPPassenger
 
-Passenger stores the passenger name and returns Regular from getType(). VIPPassenger extends Passenger and overrides getType() to return VIP. FlightBooking uses the returned type when it writes the reservation row. This small inheritance example lets the booking method accept either passenger type through the shared Passenger interface.
+Passenger stores the passenger name in a private field. Its constructor receives the name; getName() returns it. getType() returns the string Regular for a normal passenger.
+
+VIPPassenger extends Passenger. Its constructor passes the name to the parent constructor with super(name). It overrides getType() to return VIP. FlightBooking stores both passenger variants in a Passenger variable, then Flight.bookSeat() calls getName() and getType(). Dynamic method dispatch selects VIPPassenger.getType() for a VIP object and Passenger.getType() otherwise. This is the project's concrete example of inheritance and polymorphism.
 
 Database
 
-Database.getConnection() reads DB_URL, DB_USER, and DB_PASSWORD from environment variables. If DB_URL is missing, it uses jdbc:mysql://localhost:3306/booking_app?createDatabaseIfNotExist=true&serverTimezone=UTC. DB_USER defaults to root. DB_PASSWORD is required and is never written into the Java source. run.sh prompts for it invisibly if it was not already provided.
+Database is a small connection factory used by schedule, booking, and authentication code. getConnection() reads DB_URL, DB_USER, and DB_PASSWORD from the process environment. If DB_URL is blank, it uses jdbc:mysql://localhost:3306/booking_app?createDatabaseIfNotExist=true&serverTimezone=UTC. If DB_USER is blank, it uses root. It refuses to connect when DB_PASSWORD is missing, then calls DriverManager.getConnection(url, user, password). The MySQL password is supplied at runtime; it is not a Java constant or a repository file.
 
 
 AccountAuth.java - accounts and login sessions
 
-AccountAuth.initialize() creates flight_accounts and flight_sessions. Account table names are passed into AccountAuth by FlightBooking, which keeps this app's accounts separate from the theatre app's accounts even though both apps use booking_app.
+AccountAuth is the authentication service. Its constructor receives three fixed identifiers: the account table, session table, and cookie name. FlightBooking supplies flight_accounts, flight_sessions, and flight_session. This keeps this app's accounts separate from the theatre app's accounts while reusing the same authentication design.
 
-register() accepts usernames containing 3-30 letters, digits, dots, dashes, or underscores. It lowercases the username, requires an 8-128 character password, generates a random salt, and derives a 256-bit PBKDF2WithHmacSHA256 password hash with 120,000 iterations. It inserts the account and its first session in one database transaction. A duplicate username returns HTTP 409.
+initialize() creates flight_accounts with an auto-increment ID, unique username, salt, hash, and creation timestamp. It then creates flight_sessions with a token hash, account ID, expiry, creation timestamp, indexes, and a foreign key to the account. These tables are created at startup, before a visitor can submit the login form.
 
-login() finds the account by normalized username, recomputes the password hash using the account's saved salt, and compares the hashes with MessageDigest.isEqual(). Incorrect credentials do not create a session.
+register() validates and normalizes input before writing anything. It generates a 16-byte random salt, encodes it for storage, and derives the password hash. It opens a database connection, disables auto-commit, inserts the account with a PreparedStatement, reads the new ID using getGeneratedKeys(), creates the initial login session, and commits. The account and session therefore succeed together. If SQL fails, it rolls back. Duplicate key error 1062 becomes an AuthException with HTTP 409.
 
-createLogin() generates a random 32-byte session token. The browser receives the token in a cookie, but MySQL stores only its SHA-256 hash. The session expires after seven days. currentUser() reads the cookie, hashes the token, and looks up a matching unexpired session and account.
+login() normalizes the submitted username, fetches its saved salt and password hash using a parameterized SELECT, and derives a new hash from the submitted password and saved salt. MessageDigest.isEqual() compares the encoded hashes without a normal early-exit string comparison. If the account is missing or the hashes differ, it throws an authentication error and does not create a session. If they match, createLogin() inserts a new session.
 
-setLoginCookie() creates an HttpOnly, SameSite=Lax cookie. It also sets Secure when the request arrives through an HTTPS proxy. logout() deletes the matching database session and expires the browser cookie. User, Login, and AuthException are small helper classes for the authenticated account, a successful sign-in, and a user-facing authentication error.
+createLogin() uses SecureRandom to create 32 bytes and Base64 URL-safe encoding to produce the opaque cookie value. It hashes that value with SHA-256 and inserts only the hash, account ID, and seven-day expiry into flight_sessions. The raw token is returned to the HTTP handler only so it can set the cookie; it is not saved as a database value.
 
-The supporting methods each have one job. normalizeUsername() trims, validates, and lowercases a username. validatePassword() enforces the password length. hashPassword() runs PBKDF2 using the saved salt. sha256() hashes session tokens before they go into MySQL. readCookie() accepts only a token with the expected format. cookieHeader() assembles the browser cookie flags and expiry attributes.
+currentUser() asks readCookie() for the flight_session cookie. readCookie() splits the Cookie header into name/value pairs and accepts only a URL-safe token of the expected length. currentUser() hashes the token, then joins flight_sessions to flight_accounts and requires expires_at to be later than the current database time. It returns a User containing the account ID and username, or null if the cookie is absent, malformed, expired, or unknown. Expired sessions no longer authenticate, but the code does not run a scheduled purge; old rows can remain until logout, account deletion, or database cleanup.
+
+setLoginCookie() sets the raw session token as an HttpOnly, SameSite=Lax cookie with a seven-day Max-Age and Expires date. cookieHeader() adds Path=/ and adds Secure only when X-Forwarded-Proto says the request used HTTPS; this keeps local HTTP development usable while supporting a TLS-terminating proxy. logout() hashes and deletes the presented session token, then sends an expired cookie to the browser.
+
+normalizeUsername() trims the text, enforces the username pattern, and lowercases it with Locale.ROOT so usernames are case-insensitive in application behavior. validatePassword() accepts 8 through 128 characters. hashPassword() uses PBKDF2WithHmacSHA256, 120,000 iterations, and a 256-bit result, then clears the PBEKeySpec's password copy. sha256() converts a byte digest to hexadecimal for the fixed-width database column.
+
+User holds the authenticated account's integer ID and username. Login pairs a User with the newly generated raw session token for the response cookie. AuthException carries an HTTP status and a safe message for expected errors; unexpected SQLException is handled by the server as a database failure.
 
 
 6. DATABASE TABLES
@@ -146,16 +173,18 @@ The supporting methods each have one job. normalizeUsername() trims, validates, 
 All four flight tables are inside the booking_app MySQL database:
 
 flight_schedule
-One row per flight: id, flight_code, origin, destination, departure_time, and total_seats. The default schedule is defined in Java and inserted into this table at startup if absent.
+One row per flight. id is the primary key and matches the ID in the Java Flight object. flight_code is the airline-style code. origin, destination, and departure_time are display values. total_seats stores capacity: 5 for AI 101, 6 for 6E 205, and 5 for UK 812. The default schedule is defined in Java and inserted into this table at startup if absent. INSERT IGNORE means startup does not overwrite a row that is already there.
 
 flight_bookings
-One row per reserved seat: flight_id, seat_number, passenger_name, passenger_type, account_id, and booked_at. The primary key is (flight_id, seat_number), so two accounts cannot book the same seat. account_id records which account placed a new booking. Older bookings may have account_id set to NULL after the schema migration; they still count as booked.
+One row per reserved seat. flight_id points to flight_schedule.id. seat_number is 1-based, from 1 through that flight's capacity. passenger_name is the traveler name on the reservation. passenger_type stores Regular or VIP. account_id points to the signed-in account for new bookings; it is nullable so rows from before login was added can remain in the table. booked_at is added by MySQL when the row is inserted. The composite primary key (flight_id, seat_number) allows only one booking for a seat on a flight. The foreign key on flight_id prevents a booking from referring to a missing flight. Old rows with a NULL account_id still count as booked.
 
 flight_accounts
-One row per account: numeric id, unique username, password_salt, password_hash, and creation time. Password text is not stored.
+One row per account. id is an auto-increment primary key. username is unique and limited to 30 characters. password_salt stores the random salt used for this account. password_hash stores the derived hash. created_at is filled by MySQL. Password text is not stored.
 
 flight_sessions
-One row per active login: SHA-256 token_hash, account_id, expiry, and creation time. The foreign key links each session to an account.
+One row per browser login. token_hash is the primary key and contains the SHA-256 digest, not the browser's raw cookie token. account_id references flight_accounts.id. expires_at is checked on every authenticated request. created_at is filled by MySQL. Indexes help look up a user's sessions and find expiring sessions. A foreign key links each session to an account and cascades session cleanup if an account is deleted.
+
+Example booking relationship: an authenticated user has an ID in flight_accounts. Booking seat 1 on flight 1 creates a flight_bookings row with flight_id=1, seat_number=1, the passenger name/type, and that user's account_id. The seat map query checks flight_id and seat_number only; it does not filter on account_id.
 
 
 7. HTTP API
@@ -176,13 +205,13 @@ POST /api/logout
 Deletes the current session and expires the cookie.
 
 GET /api/flights
-Requires login. Returns flights and remaining seat counts.
+Requires login. Returns an array of objects with id, code, from, to, time, available, and total fields. Each available count is computed from the current database bookings.
 
 GET /api/seats?flightId=1
-Requires login. Returns the shared live seat map for that flight.
+Requires login. Returns a seats array. Each item has a number and booked boolean. The browser turns that boolean into an enabled or disabled seat button.
 
 POST /api/book
-Requires login. Saves a flight ID, seat number, passenger details, and authenticated account ID.
+Requires login. Accepts URL-encoded flightId, seat, name, and type fields. It returns a message and uses 200 for success, 400 for a missing flight/name, 409 for an invalid or already-booked seat, and 500 for an unexpected database failure.
 
 
 8. WHAT CONNECTS TO WHAT
@@ -215,24 +244,46 @@ The booking interface lists flights and draws a seat map. Available, selected, a
 
 Northbound has a different font system from Reel Room. Manrope handles body text, Instrument Serif handles display headings, and IBM Plex Mono handles flight codes and small labels. Google Fonts provides these fonts when the browser has an internet connection; fallback fonts are included in CSS. The near-black surfaces and lime accent remain part of Northbound's visual style.
 
+Detailed browser JavaScript flow:
+
+The state variables flights, selectedFlight, and selectedSeat hold only the data needed to draw the current page. They are temporary browser state, not the permanent reservation database. The DOM references flightList, seatGrid, bookButton, and message point to elements in index.html so event handlers can update them.
+
+authMode is either login or register. setAuthMode() updates the active tab, heading, description, button text, and password autocomplete hint. The tab click handlers call it when the user switches between signing in and creating an account.
+
+checkSession() runs once when the page loads. It requests GET /api/session. If Java reports a valid session, showBooking() hides the landing screen, displays the booking page, writes the username into the top bar and passenger-name field, and calls loadFlights(). If there is no session, the landing page remains visible.
+
+The auth-form submit handler prevents a full browser page reload. It creates URLSearchParams for username and password, posts them to /api/login or /api/register, and reads the JSON response. While waiting it disables the submit button. On success, showBooking() opens the booking page. On an expected server error it displays the returned message; on a network error it shows a connection message. The password is sent to the same-origin Java server over the form POST and is never put into localStorage or the page URL.
+
+The logout-button handler posts to /api/logout. The server removes the session. JavaScript then hides the booking section, shows the landing section, clears the password field, and resets the sign-in tab.
+
+loadFlights() fetches /api/flights, saves the JSON array in flights, calls drawFlights(), and automatically selects the first flight. drawFlights() maps each flight object to a button with its code, route, departure time, and available-seat count. The button's data-id links the visible card back to its Java Flight object ID.
+
+chooseFlight(id) changes selectedFlight, clears the currently selected seat and status message, redraws the flight list, and requests /api/seats?flightId=id. It then calls drawSeats() with the returned seat array. drawSeats() maps each seat record to a button. A database-booked seat is disabled, and the selected seat gets a separate style. The Book seat button stays disabled until both a seat and passenger name are present.
+
+The flight-list click handler uses event delegation: it finds the nearest .flight-card button even when the user clicks a nested route or code label. The seat-grid handler ignores disabled/taken seats. For an available seat it remembers the selected number, requests the current seat map again, and redraws it so the page uses the latest server status. Typing in the passenger-name field recalculates whether the booking button should be enabled.
+
+The booking-form submit handler sends flightId, seat number, passenger name, and selected ticket type to POST /api/book. Java creates a Passenger or VIPPassenger from the name/type. After the response, the page reloads the seat map and flight counts and displays the response message. If the request failed because the seat became unavailable, the server response is shown as an error and the refreshed map marks the seat as taken.
+
+CSS variables near the top of the page define the near-black background, dark panel, light text, muted text, borders, lime accent, and error color. Grid and flexbox place the flight list next to the seat map on wider screens. Media queries stack the panels and reorganize the booking form on smaller screens. The CSS and JavaScript are embedded in index.html, so there is no frontend build step.
+
 
 10. JAVA AND WEB CONCEPTS USED
 
-Classes and objects: Flight, FlightBookingSystem, Passenger, VIPPassenger, AccountAuth, and helper classes keep related state and behavior together.
-Encapsulation: fields are private; callers use methods instead of changing them directly.
-Inheritance: VIPPassenger extends Passenger.
-Method overriding and polymorphism: VIPPassenger overrides getType(); booking code can use either passenger as a Passenger.
-Arrays and loops: the flight list and seat map are represented as arrays and processed with loops.
-HTTP server and routing: Java receives requests, checks paths and methods, then returns HTML or JSON.
-Concurrency: a fixed thread pool serves multiple requests; synchronized protects individual Flight operations.
-Database persistence: JDBC statements read and write MySQL rows rather than keeping bookings only in memory.
-Relational keys: schedule foreign keys and the flight/seat primary key maintain valid, unique bookings.
-Prepared statements: form values are bound as parameters instead of concatenated into SQL.
-Authentication: registration, password verification, expiring sessions, cookies, and logout.
-Password hashing: each password has a random salt and PBKDF2 work factor; plaintext passwords are not stored.
-Exception handling: invalid inputs and SQL problems become appropriate HTTP error responses.
-Frontend events: JavaScript handles form submissions, account-mode tabs, sign-out, flight selection, and seat clicks.
-Responsive web design: CSS grid, flexible widths, and media queries adapt the screens to smaller devices.
+Classes and objects: Flight contains a flight and its seat operations. FlightBookingSystem creates and finds Flight objects. FlightBooking starts the server and connects requests to those objects. Passenger and VIPPassenger represent booking types. AccountAuth handles user identity separately. This separation keeps web routing, flight data, passenger types, and authentication from being one large method.
+Encapsulation: fields such as Flight.code and Passenger.name are private and read through methods. The caller asks Flight.bookSeat() to perform a reservation rather than editing an internal seat array.
+Inheritance: VIPPassenger extends Passenger and inherits its name storage and getName() method.
+Method overriding and polymorphism: VIPPassenger overrides getType(); booking code stores either subclass in a Passenger variable and the correct getType() implementation runs for the object's actual class.
+Arrays and loops: FlightBookingSystem stores a fixed array of Flight objects. getSeatsJson() uses a boolean array indexed from seat number minus one. Loops build API JSON and seat buttons from those arrays.
+HTTP server and routing: HttpServer accepts requests. The path and method determine whether Java serves HTML, authenticates a user, returns seat data, or inserts a booking. HTTP status codes tell the browser whether an action succeeded.
+Concurrency: the fixed executor uses multiple worker threads. synchronized prevents overlapping calls to the same Flight object's booking or seat-read methods. It is process-local protection; the MySQL primary key is what still prevents a duplicate if two requests race at the database.
+Database persistence: JDBC executes SQL using MySQL Connector/J. Each request opens a connection and uses try-with-resources to close connections, statements, and result sets. MySQL keeps the reservation after Java exits.
+Relational keys: flight_bookings.flight_id references flight_schedule.id. The composite primary key on flight_id and seat_number is a database rule that defines which seat is unique for one flight.
+Prepared statements: values such as account IDs, usernames, and seat numbers are bound with setInt()/setString(). SQL syntax stays separate from the user-supplied value.
+Authentication: registration creates an account; login checks its password hash; a session cookie authenticates later API calls; logout revokes the session.
+Password hashing: a random per-account salt and PBKDF2 make a database leak less useful than storing plain passwords. The random browser session token is also stored only as a hash in MySQL.
+Exception handling: missing flight or passenger name returns 400. Invalid seat number and duplicate-seat SQL error 1062 currently both return 409. Other SQL errors reach the request-level handler and become HTTP 500.
+Frontend events: event listeners handle login, logout, flight cards, seat buttons, passenger forms, and ticket type selection. fetch() connects those events to the Java API without navigating to a new page.
+Responsive web design: CSS grid, flexbox, fluid sizing, and breakpoints at 760px and 440px reorganize the page for tablets and phones.
 
 
 11. RUNNING AND CONFIGURATION
@@ -255,4 +306,4 @@ Do not commit database passwords, application passwords, session tokens, or .env
 
 The Java source uses four-space indentation, one class per clear responsibility where practical, descriptive method names, and try-with-resources for database objects. FlightBooking.java keeps the small flight and passenger domain classes beside the server entry point; authentication is separated into AccountAuth.java. This is a deliberately small teaching project rather than a multi-module framework application.
 
-The code demonstrates the full request-to-database path, but it is a classroom/demo system. It does not include email verification, password recovery, account administration, rate limiting, or a production connection pool.
+The code demonstrates the full request-to-database path, but it is a classroom/demo system. It does not include email verification, password recovery, account administration, rate limiting, reservation cancellation, automatic expired-session cleanup, or a production connection pool.
