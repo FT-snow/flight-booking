@@ -18,9 +18,11 @@ import java.util.concurrent.Executors;
 
 public class FlightBooking {
     private static FlightBookingSystem system = new FlightBookingSystem();
+    private static AccountAuth auth = new AccountAuth("flight_accounts", "flight_sessions", "flight_session");
 
     public static void main(String[] args) throws IOException, SQLException {
         system.initialize();
+        auth.initialize();
 
         HttpServer server = HttpServer.create(new InetSocketAddress(8081), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -36,18 +38,58 @@ public class FlightBooking {
 
             if (path.equals("/") && exchange.getRequestMethod().equals("GET")) {
                 send(exchange, 200, "text/html; charset=UTF-8", Files.readString(Path.of("index.html")));
-            } else if (path.equals("/api/flights") && exchange.getRequestMethod().equals("GET")) {
-                sendFlights(exchange);
-            } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
-                sendSeats(exchange);
-            } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
-                bookSeat(exchange);
+            } else if (path.equals("/api/register") && exchange.getRequestMethod().equals("POST")) {
+                authenticate(exchange, true);
+            } else if (path.equals("/api/login") && exchange.getRequestMethod().equals("POST")) {
+                authenticate(exchange, false);
+            } else if (path.equals("/api/session") && exchange.getRequestMethod().equals("GET")) {
+                sendSession(exchange);
+            } else if (path.equals("/api/logout") && exchange.getRequestMethod().equals("POST")) {
+                auth.logout(exchange);
+                sendJson(exchange, 200, "{\"message\":\"Signed out\"}");
+            } else if (path.startsWith("/api/")) {
+                AccountAuth.User user = auth.currentUser(exchange);
+                if (user == null) {
+                    sendJson(exchange, 401, "{\"message\":\"Please sign in to continue.\"}");
+                } else if (path.equals("/api/flights") && exchange.getRequestMethod().equals("GET")) {
+                    sendFlights(exchange);
+                } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
+                    sendSeats(exchange);
+                } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
+                    bookSeat(exchange, user);
+                } else {
+                    sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
+                }
             } else {
                 sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
             }
         } catch (SQLException e) {
             e.printStackTrace();
             sendJson(exchange, 500, "{\"message\":\"Database error. Check the MySQL settings.\"}");
+        }
+    }
+
+    private static void authenticate(HttpExchange exchange, boolean register) throws IOException, SQLException {
+        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        Map<String, String> form = readForm(body);
+        try {
+            AccountAuth.Login login = register
+                    ? auth.register(form.get("username"), form.get("password"))
+                    : auth.login(form.get("username"), form.get("password"));
+            auth.setLoginCookie(exchange, login.token);
+            sendJson(exchange, register ? 201 : 200, "{\"authenticated\":true,\"username\":\""
+                    + login.user.username + "\"}");
+        } catch (AccountAuth.AuthException e) {
+            sendJson(exchange, e.status, "{\"message\":\"" + e.getMessage() + "\"}");
+        }
+    }
+
+    private static void sendSession(HttpExchange exchange) throws IOException, SQLException {
+        AccountAuth.User user = auth.currentUser(exchange);
+        if (user == null) {
+            sendJson(exchange, 200, "{\"authenticated\":false}");
+        } else {
+            sendJson(exchange, 200, "{\"authenticated\":true,\"username\":\"" + user.username + "\"}");
         }
     }
 
@@ -86,7 +128,7 @@ public class FlightBooking {
         sendJson(exchange, 200, flight.getSeatsJson());
     }
 
-    private static void bookSeat(HttpExchange exchange) throws IOException, SQLException {
+    private static void bookSeat(HttpExchange exchange, AccountAuth.User user) throws IOException, SQLException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         Map<String, String> form = readForm(body);
 
@@ -107,7 +149,7 @@ public class FlightBooking {
             passenger = new Passenger(name.trim());
         }
 
-        if (flight.bookSeat(seatNumber, passenger)) {
+        if (flight.bookSeat(seatNumber, passenger, user.id)) {
             sendJson(exchange, 200, "{\"message\":\"Seat " + seatNumber + " is booked. Have a good flight!\"}");
         } else {
             sendJson(exchange, 409, "{\"message\":\"That seat is already taken. Choose another one.\"}");
@@ -185,9 +227,17 @@ class FlightBookingSystem {
 
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS flight_bookings ("
                     + "flight_id INT NOT NULL, seat_number INT NOT NULL, passenger_name VARCHAR(100) NOT NULL, "
-                    + "passenger_type VARCHAR(20) NOT NULL, booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
+                    + "passenger_type VARCHAR(20) NOT NULL, account_id INT NULL, booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, "
                     + "PRIMARY KEY (flight_id, seat_number), "
                     + "FOREIGN KEY (flight_id) REFERENCES flight_schedule(id))");
+
+            try {
+                statement.executeUpdate("ALTER TABLE flight_bookings ADD COLUMN account_id INT NULL");
+            } catch (SQLException e) {
+                if (e.getErrorCode() != 1060) {
+                    throw e;
+                }
+            }
         }
     }
 
@@ -233,19 +283,20 @@ class Flight {
     String getTime() { return time; }
     int getTotalSeats() { return totalSeats; }
 
-    synchronized boolean bookSeat(int seatNumber, Passenger passenger) throws SQLException {
+    synchronized boolean bookSeat(int seatNumber, Passenger passenger, int accountId) throws SQLException {
         if (seatNumber < 1 || seatNumber > totalSeats) {
             return false;
         }
 
         try (Connection connection = Database.getConnection();
              PreparedStatement insert = connection.prepareStatement(
-                     "INSERT INTO flight_bookings (flight_id, seat_number, passenger_name, passenger_type) "
-                             + "VALUES (?, ?, ?, ?)")) {
+                     "INSERT INTO flight_bookings (flight_id, seat_number, passenger_name, passenger_type, account_id) "
+                             + "VALUES (?, ?, ?, ?, ?)")) {
             insert.setInt(1, id);
             insert.setInt(2, seatNumber);
             insert.setString(3, passenger.getName());
             insert.setString(4, passenger.getType());
+            insert.setInt(5, accountId);
             insert.executeUpdate();
             System.out.println(passenger.getName() + " booked " + code + " seat " + seatNumber);
             return true;

@@ -22,6 +22,7 @@
         * { box-sizing: border-box; }
         body { margin: 0; background: radial-gradient(ellipse at 80% 0%, rgba(214, 242, 103, .055), transparent 34%), var(--paper); color: var(--ink); font-family: "DM Sans", sans-serif; }
         button, input, select { font: inherit; }
+        [hidden] { display: none !important; }
         ::selection { color: #090b0d; background: var(--lime); }
 
         .topbar {
@@ -34,7 +35,6 @@
         }
 
         .brand { display: flex; align-items: center; gap: 11px; font-size: 12px; font-weight: 700; letter-spacing: .13em; }
-        .brand-mark { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 7px; background: var(--teal); color: #10130c; font: 15px Georgia, serif; }
         .top-note, .eyebrow, .section-label, .mono, .footer-note { font-family: "DM Mono", monospace; text-transform: uppercase; letter-spacing: .09em; }
         .top-note { color: var(--muted); font-size: 10px; }
         main { width: min(1080px, 86%); margin: 0 auto; }
@@ -83,11 +83,62 @@
         .message { min-height: 17px; margin: 10px 0 0; color: var(--teal); font-size: 11px; }
         .message.error { color: var(--red); }
         footer { padding: 21px 0 30px; display: flex; justify-content: space-between; color: var(--muted); }
-        .footer-note { font-size: 9px; }
+
+        .header-actions { display: flex; align-items: center; gap: 22px; }
+        .account-menu { display: flex; align-items: center; gap: 12px; color: var(--muted); font: 10px "DM Mono", monospace; }
+        .sign-out { padding: 7px 10px; color: var(--ink); background: transparent; border: 1px solid var(--line); cursor: pointer; font: 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .06em; }
+        .sign-out:hover { color: var(--lime); border-color: var(--lime); }
+
+        .auth-layout {
+            min-height: calc(100svh - 66px);
+            padding: 38px 0 64px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(310px, 390px);
+            align-items: center;
+            gap: clamp(40px, 9vw, 120px);
+        }
+        .auth-story { padding: 20px 0; }
+        .auth-story .eyebrow { margin-bottom: 20px; }
+        .auth-title { margin: 0; font: 500 clamp(58px, 8vw, 96px)/.94 "Fraunces", Georgia, serif; letter-spacing: -.065em; }
+        .auth-title em { color: var(--lime); font-weight: 500; }
+        .auth-copy { max-width: 410px; margin: 24px 0 0; color: var(--muted); font-size: 14px; line-height: 1.75; }
+        .shared-proof { max-width: 415px; margin-top: 38px; padding: 18px 0; display: grid; grid-template-columns: 46px 1fr; gap: 15px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+        .proof-mark { width: 42px; height: 42px; display: grid; place-items: center; color: var(--lime); border: 1px solid #657641; border-radius: 7px; font: 20px "DM Mono", monospace; }
+        .proof-heading { margin: 1px 0 5px; font: 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+        .proof-copy { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+        .auth-steps { max-width: 470px; margin-top: 34px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+        .auth-step { color: var(--muted); font: 9px/1.6 "DM Mono", monospace; text-transform: uppercase; letter-spacing: .04em; }
+        .auth-step span { display: block; margin-bottom: 5px; color: var(--lime); }
+
+        .auth-card { padding: 30px; background: rgba(17, 21, 24, .96); border: 1px solid var(--line); box-shadow: 0 22px 70px rgba(0, 0, 0, .3); animation: appear .4s ease-out both; }
+        .auth-card .section-label { margin-bottom: 20px; }
+        .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; background: #0c1012; border: 1px solid var(--line); }
+        .auth-tab { min-height: 36px; color: var(--muted); background: transparent; border: 0; font-size: 11px; cursor: pointer; }
+        .auth-tab.active { color: var(--ink); background: #1a2014; box-shadow: inset 0 0 0 1px #657641; }
+        .auth-card h2 { margin: 24px 0 6px; font: 500 29px/1.1 "Fraunces", Georgia, serif; letter-spacing: -.035em; }
+        .auth-description { margin: 0 0 22px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+        .auth-field { margin-top: 15px; }
+        .auth-field label { display: block; margin-bottom: 7px; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+        .auth-field input { width: 100%; height: 43px; padding: 0 12px; color: var(--ink); background: #0c1012; border: 1px solid var(--line); outline: none; }
+        .auth-field input:focus { border-color: var(--lime); }
+        .auth-field input::placeholder { color: #697576; }
+        .auth-submit { width: 100%; height: 44px; margin-top: 22px; color: #10130c; background: var(--lime); border: 0; font-weight: 700; cursor: pointer; transition: background .15s, transform .15s; }
+        .auth-submit:hover:not(:disabled) { background: #e2ff8b; transform: translateY(-1px); }
+        .auth-submit:disabled { opacity: .55; cursor: wait; }
+        .auth-message { min-height: 18px; margin: 12px 0 0; color: var(--lime); font-size: 11px; }
+        .auth-message.error { color: var(--red); }
+        .auth-footnote { margin: 18px 0 0; padding-top: 14px; color: var(--muted); border-top: 1px solid var(--line); font: 9px/1.6 "DM Mono", monospace; }
         @keyframes appear { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 
         @media (max-width: 760px) {
             main { width: 90%; }
+            .auth-layout { min-height: auto; padding: 45px 0 55px; grid-template-columns: 1fr; gap: 30px; }
+            .auth-story { padding: 0; }
+            .auth-title { font-size: clamp(56px, 12vw, 82px); }
+            .auth-copy { margin-top: 18px; }
+            .shared-proof { margin-top: 25px; }
+            .auth-steps { margin-top: 22px; }
+            .auth-card { width: min(100%, 460px); }
             .intro { padding-top: 40px; align-items: start; flex-direction: column; gap: 14px; }
             .intro-copy { max-width: 360px; }
             .booking-card { grid-template-columns: 1fr; }
@@ -100,27 +151,80 @@
         }
 
         @media (max-width: 440px) {
+            .header-actions { gap: 8px; }
+            .top-note { display: none; }
+            .account-menu { gap: 6px; font-size: 8px; }
+            .account-menu > span { max-width: 76px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+            .sign-out { padding: 6px; font-size: 8px; }
+            .auth-card { padding: 23px 19px; }
             .booking-form { grid-template-columns: 1fr 1fr; }
             .field:first-child { grid-column: 1 / -1; }
             .book-button { grid-column: 1 / -1; }
             .top-note { font-size: 8px; }
-            .footer-note { font-size: 8px; }
         }
     </style>
 </head>
 <body>
     <header class="topbar">
-        <div class="brand"><span class="brand-mark">n</span> NORTHBOUND</div>
-        <div class="top-note">Departures · Today</div>
+        <div class="brand">NORTHBOUND</div>
+        <div class="header-actions">
+            <div class="top-note">Departures · Today</div>
+            <div class="account-menu" id="account-menu" hidden>
+                <span>Signed in as <strong id="account-name"></strong></span>
+                <button class="sign-out" id="logout-button" type="button">Sign out</button>
+            </div>
+        </div>
     </header>
 
-    <main>
+    <main class="auth-layout" id="auth-screen">
+        <section class="auth-story">
+            <p class="eyebrow">Northbound / departure board</p>
+            <h1 class="auth-title">A new route.<br><em>A shared seat.</em></h1>
+            <p class="auth-copy">Find a flight, choose where you sit, and take off. Your booking is saved on the live departure board for every account.</p>
+
+            <div class="shared-proof">
+                <span class="proof-mark" aria-hidden="true">↗</span>
+                <div>
+                    <p class="proof-heading">One shared seat map</p>
+                    <p class="proof-copy">Once a seat is booked, it stays taken for everyone—even after you sign out.</p>
+                </div>
+            </div>
+            <div class="auth-steps" aria-label="How it works">
+                <div class="auth-step"><span>01</span>Sign in</div>
+                <div class="auth-step"><span>02</span>Choose a route</div>
+                <div class="auth-step"><span>03</span>Book your seat</div>
+            </div>
+        </section>
+
+        <section class="auth-card" aria-labelledby="auth-title">
+            <p class="section-label">Your Northbound account</p>
+            <div class="auth-tabs" role="tablist" aria-label="Account action">
+                <button class="auth-tab active" type="button" data-auth-mode="login" role="tab" aria-selected="true">Sign in</button>
+                <button class="auth-tab" type="button" data-auth-mode="register" role="tab" aria-selected="false">Create account</button>
+            </div>
+            <h2 id="auth-title">Welcome back.</h2>
+            <p class="auth-description" id="auth-description">Sign in to see the live seat map.</p>
+            <form id="auth-form">
+                <div class="auth-field">
+                    <label for="auth-username">Username</label>
+                    <input id="auth-username" name="username" type="text" minlength="3" maxlength="30" pattern="[A-Za-z0-9_.-]{3,30}" autocomplete="username" placeholder="e.g. traveller" required>
+                </div>
+                <div class="auth-field">
+                    <label for="auth-password">Password</label>
+                    <input id="auth-password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" placeholder="At least 8 characters" required>
+                </div>
+                <button class="auth-submit" id="auth-submit" type="submit">Sign in →</button>
+            </form>
+            <p class="auth-message" id="auth-message" aria-live="polite"></p>
+            <p class="auth-footnote">New here? Create an account. Your password is stored as a secure hash.</p>
+        </section>
+    </main>
+
+    <main id="booking-app" hidden>
         <section class="intro">
             <div>
-                <p class="eyebrow">A seat with your name on it</p>
                 <h1>Choose your<br>next departure.</h1>
             </div>
-            <p class="intro-copy">Select a route, pick a seat, and we’ll hold it for you. Simple as that.</p>
         </section>
 
         <section class="booking-card">
@@ -155,10 +259,6 @@
             </section>
         </section>
 
-        <footer>
-            <span class="footer-note">Northbound · Flight reservations</span>
-            <span class="footer-note">One passenger, one seat</span>
-        </footer>
     </main>
 
     <script>
@@ -170,6 +270,102 @@
         const seatGrid = document.getElementById("seat-grid");
         const bookButton = document.getElementById("book-button");
         const message = document.getElementById("message");
+
+        let authMode = "login";
+
+        function setAuthMode(mode) {
+            authMode = mode;
+            const registering = mode === "register";
+            document.querySelectorAll("[data-auth-mode]").forEach(function (button) {
+                const active = button.dataset.authMode === mode;
+                button.classList.toggle("active", active);
+                button.setAttribute("aria-selected", String(active));
+            });
+            document.getElementById("auth-title").textContent = registering ? "Make yourself at home." : "Welcome back.";
+            document.getElementById("auth-description").textContent = registering
+                ? "Create an account and claim a seat with everyone else."
+                : "Sign in to see the live seat map.";
+            document.getElementById("auth-submit").textContent = registering ? "Create account →" : "Sign in →";
+            document.getElementById("auth-password").autocomplete = registering ? "new-password" : "current-password";
+            const authMessage = document.getElementById("auth-message");
+            authMessage.textContent = "";
+            authMessage.classList.remove("error");
+        }
+
+        async function showBooking(username) {
+            document.getElementById("auth-screen").hidden = true;
+            document.getElementById("booking-app").hidden = false;
+            document.getElementById("account-menu").hidden = false;
+            document.getElementById("account-name").textContent = username;
+            document.getElementById("passenger-name").value = username;
+            try {
+                await loadFlights();
+            } catch (error) {
+                message.textContent = "Could not connect to the flight booking server.";
+                message.classList.add("error");
+            }
+        }
+
+        async function checkSession() {
+            try {
+                const response = await fetch("/api/session");
+                const session = await response.json();
+                if (session.authenticated) {
+                    await showBooking(session.username);
+                }
+            } catch (error) {
+                const authMessage = document.getElementById("auth-message");
+                authMessage.textContent = "Could not reach the booking server. Please refresh and try again.";
+                authMessage.classList.add("error");
+            }
+        }
+
+        document.querySelectorAll("[data-auth-mode]").forEach(function (button) {
+            button.addEventListener("click", function () {
+                setAuthMode(button.dataset.authMode);
+            });
+        });
+
+        document.getElementById("auth-form").addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const authMessage = document.getElementById("auth-message");
+            const submit = document.getElementById("auth-submit");
+            const form = new URLSearchParams();
+            form.append("username", document.getElementById("auth-username").value.trim());
+            form.append("password", document.getElementById("auth-password").value);
+            authMessage.textContent = "";
+            authMessage.classList.remove("error");
+            submit.disabled = true;
+
+            try {
+                const response = await fetch(authMode === "register" ? "/api/register" : "/api/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: form
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    authMessage.textContent = result.message || "Could not sign in.";
+                    authMessage.classList.add("error");
+                    return;
+                }
+                await showBooking(result.username);
+            } catch (error) {
+                authMessage.textContent = "Could not reach the booking server. Please try again.";
+                authMessage.classList.add("error");
+            } finally {
+                submit.disabled = false;
+            }
+        });
+
+        document.getElementById("logout-button").addEventListener("click", async function () {
+            await fetch("/api/logout", { method: "POST" });
+            document.getElementById("booking-app").hidden = true;
+            document.getElementById("account-menu").hidden = true;
+            document.getElementById("auth-screen").hidden = false;
+            document.getElementById("auth-password").value = "";
+            setAuthMode("login");
+        });
 
         async function loadFlights() {
             const response = await fetch("/api/flights");
@@ -259,10 +455,7 @@
             message.classList.toggle("error", !response.ok);
         });
 
-        loadFlights().catch(function () {
-            message.textContent = "Could not connect to the flight booking server.";
-            message.classList.add("error");
-        });
+        checkSession();
     </script>
 </body>
 </html>
